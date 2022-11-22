@@ -46,8 +46,10 @@ BufferPoolManager::~BufferPoolManager() {
  * 4. Update page metadata, read page content from disk file and return page
  * pointer
  */
-Page *BufferPoolManager::FetchPage(page_id_t page_id) { 
+Page *BufferPoolManager::FetchPage(page_id_t page_id) 
+{ 
   lock_guard<mutex> lck(latch_);      //解决多线程问题，之后的实现中都需要考虑
+
   Page* tar_page = nullptr;
   if(page_table_->Find(page_id,tar_page))     //如果能够找到，返回
   {
@@ -56,7 +58,7 @@ Page *BufferPoolManager::FetchPage(page_id_t page_id) {
     return tar_page;
   }
 
-  tar_page = GetVictimePage();
+  tar_page = findUsePage();
   if(tar_page == nullptr)
     return tar_page;
 
@@ -83,16 +85,21 @@ Page *BufferPoolManager::FetchPage(page_id_t page_id) {
  * replacer if pin_count<=0 before this call, return false. is_dirty: set the
  * dirty flag of this page
  */
-bool BufferPoolManager::UnpinPage(page_id_t page_id, bool is_dirty) {
+bool BufferPoolManager::UnpinPage(page_id_t page_id, bool is_dirty) 
+{
   lock_guard<mutex> lck(latch_);
   Page* tar_page = nullptr;
-  page_table_->Find(page_id,tar_page);
+  page_table_->Find(page_id,tar_page);       //调用hash中的Find
   if(tar_page == nullptr)
     return false;
+
   tar_page->is_dirty_ = is_dirty;
-  if(tar_page->GetPinCount() <= 0)
+
+  if(tar_page->pin_count_ <= 0)
     return false;
-  if(--tar_page->pin_count_ == 0)
+  
+  tar_page->pin_count_--;
+  if(tar_page->pin_count_ == 0)
     replacer_->Insert(tar_page);
   return true;
 }
@@ -103,12 +110,13 @@ bool BufferPoolManager::UnpinPage(page_id_t page_id, bool is_dirty) {
  * if page is not found in page table, return false
  * NOTE: make sure page_id != INVALID_PAGE_ID
  */
-bool BufferPoolManager::FlushPage(page_id_t page_id) { 
+bool BufferPoolManager::FlushPage(page_id_t page_id) 
+{ 
   lock_guard<mutex> lck(latch_);
   Page* tar_page = nullptr;
-  page_table_->Find(page_id,tar_page);
+
   // 确保pageid有效
-  if(tar_page == nullptr || tar_page->page_id_ == INVALID_PAGE_ID)
+  if(!page_table_->Find(page_id, tar_page) || tar_page->page_id_ == INVALID_PAGE_ID)
     return false;
   if(tar_page->is_dirty_)
   {
@@ -126,13 +134,14 @@ bool BufferPoolManager::FlushPage(page_id_t page_id) {
  * call disk manager's DeallocatePage() method to delete from disk file. If
  * the page is found within page table, but pin_count != 0, return false
  */
-bool BufferPoolManager::DeletePage(page_id_t page_id) {
+bool BufferPoolManager::DeletePage(page_id_t page_id) 
+{
   lock_guard<mutex> lck(latch_);
   Page* tar_page = nullptr;
-  page_table_->Find(page_id,tar_page);
-  if (tar_page != nullptr) 
+
+  if (page_table_->Find(page_id,tar_page)) 
   {
-    if (tar_page->GetPinCount() > 0)      // pincount > 0  不能删除
+    if (tar_page->pin_count_ > 0)      // pincount > 0  不能删除
       return false;
     replacer_->Erase(tar_page);
     page_table_->Remove(page_id);
@@ -152,20 +161,23 @@ bool BufferPoolManager::DeletePage(page_id_t page_id) {
  * update new page's metadata, zero out memory and add corresponding entry
  * into page table. return nullptr if all the pages in pool are pinned
  */
-Page *BufferPoolManager::NewPage(page_id_t &page_id) {
+Page *BufferPoolManager::NewPage(page_id_t &page_id) 
+{
   lock_guard<mutex> lck(latch_);
   Page* tar_page = nullptr;
-  tar_page = GetVictimePage();
+  tar_page = findUsePage();
   if(tar_page == nullptr)
     return tar_page;
+
+  
 
   page_id = disk_manager_->AllocatePage();
 
   if(tar_page->is_dirty_)
     disk_manager_->WritePage(tar_page->GetPageId(),tar_page->data_);
 
-  page_table_->Remove(tar_page->GetPageId());
-  page_table_->Insert(page_id,tar_page);
+  page_table_->Remove(tar_page->GetPageId());   // 删除旧页
+  page_table_->Insert(page_id,tar_page);        // 将新页放入
 
   tar_page->page_id_ = page_id;
   tar_page->ResetMemory();
@@ -175,7 +187,8 @@ Page *BufferPoolManager::NewPage(page_id_t &page_id) {
   return tar_page; 
 }
 
-Page* BufferPoolManager::GetVictimePage(){
+Page* BufferPoolManager::findUsePage()
+{
   Page* tar_page = nullptr;
   if(!free_list_->empty())     //不为空首先在free_list中寻找页面
   {
@@ -193,3 +206,4 @@ Page* BufferPoolManager::GetVictimePage(){
   return tar_page;
 }
 } // namespace scudb
+

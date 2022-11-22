@@ -8,7 +8,8 @@ using namespace std;
 
 namespace scudb {
 
-template <typename T> LRUReplacer<T>::LRUReplacer() {    //构造函数，初始化
+template <typename T> LRUReplacer<T>::LRUReplacer() 
+{    //构造函数，初始化
   head = make_shared<Node> ();
   tail = make_shared<Node> ();
   head->next = tail;
@@ -20,7 +21,8 @@ template <typename T> LRUReplacer<T>::~LRUReplacer() {}
 /*
  * Insert value into LRU
  */
-template <typename T> void LRUReplacer<T>::Insert(const T &value) {
+template <typename T> void LRUReplacer<T>::Insert(const T &value) 
+{
   lock_guard<mutex> lck(latch);       //确保多线程安全，以后都要注意
   shared_ptr<Node> cur;               //创建当前指向当前插入值的指针
 
@@ -48,9 +50,10 @@ template <typename T> void LRUReplacer<T>::Insert(const T &value) {
 /* If LRU is non-empty, pop the head member from LRU to argument "value", and
  * return true. If LRU is empty, return false
  */
-template <typename T> bool LRUReplacer<T>::Victim(T &value) {
+template <typename T> bool LRUReplacer<T>::Victim(T &value) 
+{
   lock_guard<mutex> lck(latch);
-  if(map.empty())
+  if(map.size() == 0)
     return false;
   
    // 把最后一个弹出
@@ -66,7 +69,8 @@ template <typename T> bool LRUReplacer<T>::Victim(T &value) {
  * Remove value from LRU. If removal is successful, return true, otherwise
  * return false
  */
-template <typename T> bool LRUReplacer<T>::Erase(const T &value) {
+template <typename T> bool LRUReplacer<T>::Erase(const T &value) 
+{
   lock_guard<mutex> lck(latch);
   // 删除结点的过程
   if(map.find(value) != map.end())
@@ -88,3 +92,4 @@ template class LRUReplacer<Page *>;
 template class LRUReplacer<int>;
 
 } // namespace scudb
+
