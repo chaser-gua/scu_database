@@ -89,19 +89,25 @@ bool BufferPoolManager::UnpinPage(page_id_t page_id, bool is_dirty)
 {
   lock_guard<mutex> lck(latch_);
   Page* tar_page = nullptr;
-  page_table_->Find(page_id,tar_page);       //调用hash中的Find
-  if(tar_page == nullptr)
-    return false;
-
-  tar_page->is_dirty_ = is_dirty;
-
-  if(tar_page->pin_count_ <= 0)
-    return false;
-  
-  tar_page->pin_count_--;
-  if(tar_page->pin_count_ == 0)
-    replacer_->Insert(tar_page);
-  return true;
+       
+  if (page_table_->Find(page_id, tar_page) )
+  {
+    tar_page->is_dirty_ = is_dirty;
+    if (tar_page->pin_count_ > 0) 
+    {
+      tar_page->pin_count_--;
+      if (tar_page->pin_count_ == 0) 
+      {
+        replacer_->Insert(tar_page);
+      }
+      return true;
+    } 
+    else 
+    {
+      return false;
+    }
+  }
+  return false;
 }
 
 /*
